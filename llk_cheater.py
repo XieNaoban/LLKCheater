@@ -82,13 +82,15 @@ class Game:
 
     CELL_TOP, CELL_LEFT = 141, 64
     CELL_HEIGHT, CELL_WIDTH = 50, 40
-    CELL_MAX_ROW, CELL_MAX_COL = 16, 9
+    CELL_MAX_ROW, CELL_MAX_COL = 9, 16
 
-    _ID_UP, _ID_DOWN = CELL_HEIGHT / 2 - 2, CELL_HEIGHT / 2 + 2
-    _ID_LEFT, _ID_RIGHT = CELL_WIDTH / 2 - 2, CELL_WIDTH / 2 + 2
+    _ID_UP, _ID_DOWN = (CELL_HEIGHT >> 1) - 2, (CELL_HEIGHT >> 1) + 2
+    _ID_LEFT, _ID_RIGHT = (CELL_WIDTH >> 1) - 2, (CELL_WIDTH >> 1) + 2
 
     def __init__(self, win: Window) -> None:
         self.win = win
+        self.cal_board()
+        self.print_board()
     
     def cell_point(self, cell_x: int, cell_y: int) -> List[int]:
         """ 格子的左上坐标点. 用 List 而不用 Tuple 返回是为了允许直接修改元素 (Tuple 内部元素不可变). """
@@ -101,12 +103,13 @@ class Game:
         for dx in [self._ID_UP, self._ID_DOWN]:
             for dy in [self._ID_LEFT, self._ID_RIGHT]:
                 rgba = self.win.screen[px + dx][py + dy]
-                v = 1
+                v = 0
                 for i in range(3): v = (v << 8) + rgba[i]
                 hash = (hash << 8) + (v % 233)  # 随便取模个小于 256 的素数 233
         return hash
 
     def cal_board(self):
+        """ 计算出当前棋盘局面. """
         board, dic = [], {}
         for i in range(self.CELL_MAX_ROW):
             line = []
@@ -115,10 +118,33 @@ class Game:
                 cid = self.cell_id(i, j)
                 line.append(cid)
                 dic[cid] = dic.get(cid, 0) + 1
+        vis = {}
+        vis_cnt = 0
+        for line in board:
+            for i in range(len(line)):
+                h = line[i]
+                if h == 0: continue
+                if dic[h] & 1 == 1: line[i] = 0
+                elif h in vis: line[i] = vis[h]
+                else:
+                    vis_cnt += 1
+                    line[i] = vis_cnt
+                    vis[h] = vis_cnt
+        self.type_cnt = len(vis)
+        self.board = board
+
+    def print_board(self):
+        """ 打印棋盘. """
+        print('牌面类型数量:', self.type_cnt)
+        for line in self.board:
+            print(end='|\t')
+            for n in line: print(n if n > 0 else ' ', end='\t')
+            print('|')
 
 
 def main():
     win = Window()
+    game = Game(win)
 
 
 if __name__ == '__main__':
