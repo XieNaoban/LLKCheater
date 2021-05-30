@@ -48,6 +48,7 @@ class Window:
             for c in range(self.width):
                 sc = sr + 4 * c
                 rgba = [b if b >= 0 else b + 256 for b in bits[sc: sc + 4]]
+                rgba[0], rgba[2] = rgba[2], rgba[0] # GetBitmapBits 返回的是 BGRA, 所以要转一下
                 line.append(rgba)
         # self.sc_info = bitmap.GetInfo()
 
@@ -84,8 +85,9 @@ class Game:
     CELL_HEIGHT, CELL_WIDTH = 50, 40
     CELL_MAX_ROW, CELL_MAX_COL = 9, 16
 
-    _ID_UP, _ID_DOWN = (CELL_HEIGHT >> 1) - 2, (CELL_HEIGHT >> 1) + 2
-    _ID_LEFT, _ID_RIGHT = (CELL_WIDTH >> 1) - 2, (CELL_WIDTH >> 1) + 2
+    _ID_UP_DOWN_RANGE = range((CELL_HEIGHT >> 1) - 14, (CELL_HEIGHT >> 1) +15, 4)
+    _ID_LEFT_RIGHT_RANGE = range((CELL_WIDTH >> 1) - 14, (CELL_WIDTH >> 1) + 15, 4)
+    _ID_POINTS = [[14, 3], [15, 1], [29, 3], [34, 4], [41, 7], [41, 8], [41, 9]]
 
     def __init__(self, win: Window) -> None:
         self.win = win
@@ -100,12 +102,12 @@ class Game:
         """ 格子识别码 (根据几个像素确定). """
         hash = 0
         px, py = self.cell_point(cell_x, cell_y)
-        for dx in [self._ID_UP, self._ID_DOWN]:
-            for dy in [self._ID_LEFT, self._ID_RIGHT]:
+        for dx in self._ID_UP_DOWN_RANGE:
+            for dy in self._ID_LEFT_RIGHT_RANGE:
                 rgba = self.win.screen[px + dx][py + dy]
-                v = 0
-                for i in range(3): v = (v << 8) + rgba[i]
-                hash = (hash << 8) + (v % 233)  # 随便取模个小于 256 的素数 233
+                r, g, b, a = rgba
+                gray = (r * 38 + g * 75 + b * 15) >> 7  # 也是 0~255
+                hash = (hash << 2) | (gray >> 6)  # 随便取模个小于 256 的素数 233
         return hash
 
     def cal_board(self):
@@ -120,15 +122,17 @@ class Game:
                 dic[cid] = dic.get(cid, 0) + 1
         vis = {}
         vis_cnt = 0
-        for line in board:
-            for i in range(len(line)):
-                h = line[i]
+        for i, line in enumerate(board):
+            for j in range(len(line)):
+                h = line[j]
                 if h == 0: continue
-                if dic[h] & 1 == 1: line[i] = 0
-                elif h in vis: line[i] = vis[h]
+                if dic[h] != 4:
+                    print(i, j, dic[h])
+                if dic[h] & 1 == 1: line[j] = 0
+                elif h in vis: line[j] = vis[h]
                 else:
                     vis_cnt += 1
-                    line[i] = vis_cnt
+                    line[j] = vis_cnt
                     vis[h] = vis_cnt
         self.type_cnt = len(vis)
         self.board = board
@@ -136,19 +140,35 @@ class Game:
     def print_board(self):
         """ 打印棋盘. """
         print('牌面类型数量:', self.type_cnt)
+        header_footer = '+' + ('-' * (3 * self.CELL_MAX_COL + 1)) + '+'
+        print(header_footer)
         for line in self.board:
-            print(end='|\t')
-            for n in line: print(n if n > 0 else ' ', end='\t')
-            print('|')
+            print(end='|')
+            for n in line: print(('%3d' % n) if n > 0 else '   ', end='')
+            print(' |')
+        print(header_footer)
+
+    def same_rgb_points(self, ps):
+        def rgba_of(cx, cy, px, py):
+            x, y = self.cell_point(cx, cy)
+            return self.win.screen[x + px][y + py]
+        for i in range(9, 41):
+            for j in range(1, self.CELL_WIDTH):
+                co = rgba_of(ps[0][0], ps[0][1], i, j)
+                for px, py in ps[1:]: pass
+                if co != rgba_of(px, py, i, j): break
+                else: print('[%d, %d]' % (i, j))
 
 
 def main():
     win = Window()
     game = Game(win)
+    game.same_rgb_points([[0, 1], [0, 10], [1, 15], [6, 7]])
+    win.mouse_teleport(game.CELL_TOP + 41, game.CELL_LEFT + 12 + game.CELL_WIDTH)
 
 
 if __name__ == '__main__':
     try: main()
     except pywintypes.error as e:
-        if e.args[2] == '无效的窗口句柄。': print('错误: 未检测到正在运行的 "连连看 V3.0".')
+        if e.args[2] == '无效的窗口句柄。': print('错误: 未检测到正在运行的 "连连看V3.0".')
         else: raise e
