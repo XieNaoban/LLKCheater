@@ -5,6 +5,7 @@
 
 import copy
 import time
+import random
 from typing import Any, Dict, List, Optional
 import win32api, win32con, win32gui, win32ui, pywintypes
 
@@ -120,24 +121,25 @@ class Game:
         top, bottom = p[0], p[0]
         while top >= 1 and self.board[top - 1][p[1]] == 0: top -= 1
         while bottom <= self.CELL_MAX_ROW and self.board[bottom + 1][p[1]] == 0: bottom += 1
-        left, right = p[0], p[0]
+        left, right = p[1], p[1]
         while left >= 1 and self.board[p[0]][left - 1] == 0: left -= 1
         while right <= self.CELL_MAX_COL and self.board[p[0]][right + 1] == 0: right += 1
-        return [top, bottom, left, right]
+        return [top, bottom + 1, left, right + 1]
 
     def __path(self, from_p: List[int], to_p: List[int]) -> Optional[List[List[int]]]:
         """ 计算两点之间是否有可行路径. """
-        res = []
+        if from_p[0] == to_p[0] and abs(from_p[1] - to_p[1]) == 1: return [from_p, to_p]
+        if from_p[1] == to_p[1] and abs(from_p[0] - to_p[0]) == 1: return [from_p, to_p]
         t1, b1, l1, r1 = self.__moveable_v_h(from_p)
         t2, b2, l2, r2 = self.__moveable_v_h(to_p)
         for r in range(*self.__intersection_of_range([t1, b1], [t2, b2])):
-            for c in range(*sorted([from_p[1] + 1, to_p[1]])):
+            for c in range(*sorted([from_p[1], to_p[1]])):
                 if self.board[r][c] != 0: break
-            else: return res
+            else: return [from_p, [r, from_p[1]], [r, to_p[1]], to_p]
         for c in range(*self.__intersection_of_range([l1, r1], [l2, r2])):
-            for r in range(*sorted([from_p[0] + 1, to_p[0]])):
+            for r in range(*sorted([from_p[0], to_p[0]])):
                 if self.board[r][c] != 0: break
-            else: return res
+            else: return [from_p, [from_p[0], c], [to_p[0], c], to_p]
         return None
     
     def __cell_point(self, cell_x: int, cell_y: int) -> List[int]:
@@ -146,13 +148,20 @@ class Game:
     
     def __cell_id(self, cell_x: int, cell_y: int) -> int:
         """ 格子识别码 (根据几个像素确定). """
+        def is_px_black():
+            rgba = self.win.screen[px + dx][py + dy]
+            gray = self.__gray_of_rgba(rgba)
+            return gray < 125
         hash = 0
         black_cnt = 0
         px, py = self.__cell_point(cell_x, cell_y)
+        _dx1, _dx2, _dy1, _dy2 = 3, self.CELL_HEIGHT - 4, 3, self.CELL_WIDTH - 4
+        for dx, dy in [[_dx1, _dy1], [_dx1, _dy2], [_dx2, _dy1], [_dx2, _dy2]]:
+            if is_px_black(): return 0
+        for dx, dy in [[0, 0], [self.CELL_HEIGHT - 1, 0], [0, self.CELL_WIDTH - 1]]:
+            if not is_px_black(): return 0
         for dx, dy in self.__id_points:
-            rgba = self.win.screen[px + dx][py + dy]
-            gray = self.__gray_of_rgba(rgba)
-            is_black = gray < 50
+            is_black = is_px_black()
             if is_black: black_cnt += 1
             hash = (hash << 1) | is_black
         if black_cnt == 0 or black_cnt == len(self.__id_points): return 0
@@ -197,12 +206,15 @@ class Game:
                 if cid == 0: continue
                 card_pos.setdefault(cid, []).append([r, c])
         assert self.type_cnt == len(card_pos)
-        for points in card_pos.values():
+        same = [v for v in card_pos.values()]
+        random.shuffle(same)
+        for points in same:
             size = len(points)
             for i in range(size):
                 for j in range(i + 1, size):
-                    if self.__path(points[i], points[j]) is not None:
-                        self.print(hint=[points[i], points[j]])
+                    path = self.__path(points[i], points[j])
+                    if path is not None:
+                        self.print(hint=path)
                         return
         print('Hint not found.')
 
@@ -212,7 +224,9 @@ class Game:
         to_print = self.board
         if hint is not None:
             to_print = copy.deepcopy(self.board)
-            for px, py in hint: to_print[px][py] = '*'
+            for px, py in hint[1:-1]: to_print[px][py] = '+'
+            to_print[hint[0][0]][hint[0][1]] = '*'
+            to_print[hint[-1][0]][hint[-1][1]] = '*'
 
         print('牌面类型数量:', self.type_cnt)
         header_footer = '+' + ('-' * (3 * self.CELL_MAX_COL + 6 + 1)) + '+'
@@ -230,9 +244,9 @@ def main():
     win = Window()
     game = Game(win)
     while True:
-        time.sleep(5)
         game.refresh()
         game.hint()
+        time.sleep(4)
     # win.mouse_teleport(game.CELL_TOP + 41, game.CELL_LEFT + 12 + game.CELL_WIDTH)
 
 
