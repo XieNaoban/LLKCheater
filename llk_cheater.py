@@ -62,17 +62,17 @@ class Window:
         """ 把鼠标挪到指定位置 (坐标原点为窗口左上角). """
         win32api.SetCursorPos([self.left + left, self.top + top])
 
-    def mouse_click_left() -> None:
+    def mouse_click_left(self) -> None:
         """ 鼠标左击. """
         win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0)
         win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0)
 
-    def mouse_click_right() -> None:
+    def mouse_click_right(self) -> None:
         """ 鼠标右击. """
         win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTDOWN, 0, 0)
         win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTUP, 0, 0)
 
-    def keybord_click(code: int) -> None:
+    def keybord_click(self, code: int) -> None:
         """ 键盘单击. """
         win32api.keybd_event(code, 0, 0, 0)
         win32api.keybd_event(code, 0, win32con.KEYEVENTF_KEYUP, 0)
@@ -85,9 +85,8 @@ class Game:
     CELL_HEIGHT, CELL_WIDTH = 50, 40
     CELL_MAX_ROW, CELL_MAX_COL = 9, 16
 
-    _ID_UP_DOWN_RANGE = range((CELL_HEIGHT >> 1) - 14, (CELL_HEIGHT >> 1) +15, 4)
-    _ID_LEFT_RIGHT_RANGE = range((CELL_WIDTH >> 1) - 14, (CELL_WIDTH >> 1) + 15, 4)
-    _ID_POINTS = [[14, 3], [15, 1], [29, 3], [34, 4], [41, 7], [41, 8], [41, 9]]
+    # 随便找 8 个点, 要求这 8 个点的灰度值在任意卡牌上都相同
+    _ID_POINTS = [[16, 22], [17, 24], [18, 23], [20, 14], [21, 18], [26, 20], [29, 23], [33, 19]]
 
     def __init__(self, win: Window) -> None:
         self.win = win
@@ -102,12 +101,14 @@ class Game:
         """ 格子识别码 (根据几个像素确定). """
         hash = 0
         px, py = self.cell_point(cell_x, cell_y)
-        for dx in self._ID_UP_DOWN_RANGE:
-            for dy in self._ID_LEFT_RIGHT_RANGE:
-                rgba = self.win.screen[px + dx][py + dy]
-                r, g, b, a = rgba
-                gray = (r * 38 + g * 75 + b * 15) >> 7  # 也是 0~255
-                hash = (hash << 2) | (gray >> 6)  # 随便取模个小于 256 的素数 233
+        black_cnt = 0
+        for dx, dy in self._ID_POINTS:
+            rgba = self.win.screen[px + dx][py + dy]
+            r, g, b, a = rgba
+            if r < 5 and g < 5 and b < 5: black_cnt += 1
+            gray = self.gray_of_rgba(rgba)
+            hash = (hash << 8) | gray
+        # if black_cnt > 7: return 0
         return hash
 
     def cal_board(self):
@@ -127,7 +128,7 @@ class Game:
                 h = line[j]
                 if h == 0: continue
                 if dic[h] != 4:
-                    print(i, j, dic[h])
+                    print('[%d, %d]' % (i, j), dic[h])
                 if dic[h] & 1 == 1: line[j] = 0
                 elif h in vis: line[j] = vis[h]
                 else:
@@ -149,22 +150,35 @@ class Game:
         print(header_footer)
 
     def same_rgb_points(self, ps):
+        """ 主要针对青蛙: 参数传入四只青蛙的坐标, 计算四只青蛙的颜色大体相同的地方. """
         def rgba_of(cx, cy, px, py):
             x, y = self.cell_point(cx, cy)
             return self.win.screen[x + px][y + py]
+        def gray_of(cx, cy, px, py):
+            rgba = rgba_of(cx, cy, px, py)
+            return self.gray_of_rgba(rgba)
+        shift = 0
         for i in range(9, 41):
             for j in range(1, self.CELL_WIDTH):
-                co = rgba_of(ps[0][0], ps[0][1], i, j)
-                for px, py in ps[1:]: pass
-                if co != rgba_of(px, py, i, j): break
-                else: print('[%d, %d]' % (i, j))
+                co = gray_of(ps[0][0], ps[0][1], i, j)
+                for px, py in ps[1:]:
+                    if (co >> shift) != (gray_of(px, py, i, j) >> shift): break
+                else: print('[%d, %d]' % (i, j), end=' ')
+            print()
+    
+    @staticmethod
+    def gray_of_rgba(rgba: List[str]):
+        """ 快速计算 RGBA 的灰度. """
+        r, g, b, a = rgba
+        return (r * 38 + g * 75 + b * 15) >> 7
 
 
 def main():
     win = Window()
     game = Game(win)
-    game.same_rgb_points([[0, 1], [0, 10], [1, 15], [6, 7]])
-    win.mouse_teleport(game.CELL_TOP + 41, game.CELL_LEFT + 12 + game.CELL_WIDTH)
+    # game.same_rgb_points([[5, 15], [7, 12], [7, 15], [8, 10]])
+    # game.same_rgb_points([[3, 5], [4, 1], [7, 14], [8, 15]])
+    # win.mouse_teleport(game.CELL_TOP + 41, game.CELL_LEFT + 12 + game.CELL_WIDTH)
 
 
 if __name__ == '__main__':
