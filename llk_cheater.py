@@ -6,7 +6,7 @@
 import copy
 import time
 import random
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import win32api, win32con, win32gui, win32ui, pywintypes
 
 
@@ -59,6 +59,10 @@ class Window:
         save_dc.DeleteDC()
         mfc_dc.DeleteDC()
         win32gui.ReleaseDC(self.hwnd, hwnd_dc)
+    
+    def mouse_position(self) -> Tuple[int, int]:
+        """ 获取鼠标位置. """
+        return win32api.GetCursorPos()
 
     def mouse_teleport(self, top: int, left: int) -> None:
         """ 把鼠标挪到指定位置 (坐标原点为窗口左上角). """
@@ -166,6 +170,13 @@ class Game:
             hash = (hash << 1) | is_black
         if black_cnt == 0 or black_cnt == len(self.__id_points): return 0
         return hash
+    
+    def __click_cell(self, cell_x: int, cell_y: int) -> None:
+        """ 点击格子. 减一是因为 self.board 四周绕了一圈空白的格子. """
+        cell_x, cell_y = cell_x - 1, cell_y - 1
+        top, left = self.__cell_point(cell_x, cell_y)
+        self.win.mouse_teleport(top + 8, left + 8)
+        self.win.mouse_click_left()
 
     def refresh(self):
         """ 计算出当前棋盘局面. """
@@ -213,10 +224,16 @@ class Game:
             for i in range(size):
                 for j in range(i + 1, size):
                     path = self.__path(points[i], points[j])
-                    if path is not None:
-                        self.print(hint=path)
-                        return
-        print('Hint not found.')
+                    if path is not None: return path
+        return None
+
+    def connect(self) -> bool:
+        """ 自动连一次. """
+        path = self.hint()
+        if path is None: return False
+        self.__click_cell(*path[0])
+        self.__click_cell(*path[-1])
+        return True
 
 
     def print(self, hint: Optional[List[List[int]]] = None):
@@ -243,11 +260,13 @@ class Game:
 def main():
     win = Window()
     game = Game(win)
+    print('晃晃鼠标即可退出程序.')
     while True:
         game.refresh()
-        game.hint()
-        time.sleep(4)
-    # win.mouse_teleport(game.CELL_TOP + 41, game.CELL_LEFT + 12 + game.CELL_WIDTH)
+        game.connect()
+        pos = win.mouse_position()
+        time.sleep(0.15)
+        if pos != win.mouse_position(): break
 
 
 if __name__ == '__main__':
