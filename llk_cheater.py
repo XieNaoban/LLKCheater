@@ -3,8 +3,9 @@
 统一一下, 以下所有横纵坐标都是先行再列.
 """
 
+import copy
 import time
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 import win32api, win32con, win32gui, win32ui, pywintypes
 
 
@@ -90,24 +91,53 @@ class Game:
         """ 快速计算 RGBA 的灰度. """
         r, g, b, a = rgba
         return (r * 38 + g * 75 + b * 15) >> 7
+    
+    @classmethod
+    def __init_id_points(cls):
+        """ 初始化定位格子 ID 的像素点. """
+        res = []
+        for dx in range(11, cls.CELL_HEIGHT - 10, 4):
+            for dy in range(6, cls.CELL_WIDTH - 5, 4):
+                res.append([dx, dy])
+        return res
+
+    @staticmethod
+    def __intersection_of_range(range1: List[int], range2: List[int]) -> List[int]:
+        """ 取两个范围的交集. 范围都是左闭右开 (方便遍历). """
+        if range1[0] > range2[0]: range1, range2 = range2, range1
+        [a1, b1], [a2, b2] = range1, range2
+        if b1 <= a2: return [-1, -1]
+        return [a2, min(b1, b2)]
 
     def __init__(self, win: Window) -> None:
         self.__id_points = self.__init_id_points()
         self.win = win
-        self.cal_board()
-        self.print_board()
-    
-    def __init_id_points(self):
-        """ 初始化定位格子 ID 的像素点. """
-        res = []
-        for dx in range(11, self.CELL_HEIGHT - 10, 4):
-            for dy in range(6, self.CELL_WIDTH - 5, 4):
-                res.append([dx, dy])
-        return res
-    
+        self.refresh()
+        self.print()
+
+    def __moveable_v_h(self, p: List[int]) -> List[int]:
+        """ 点在垂直和水平方向的可移动范围. """
+        top, bottom = p[0], p[0]
+        while top >= 1 and self.board[top - 1][p[1]] == 0: top -= 1
+        while bottom <= self.CELL_MAX_ROW and self.board[bottom + 1][p[1]] == 0: bottom += 1
+        left, right = p[0], p[0]
+        while left >= 1 and self.board[p[0]][left - 1] == 0: left -= 1
+        while right <= self.CELL_MAX_COL and self.board[p[0]][right + 1] == 0: right += 1
+        return [top, bottom, left, right]
+
     def __path(self, from_p: List[int], to_p: List[int]) -> Optional[List[List[int]]]:
         """ 计算两点之间是否有可行路径. """
         res = []
+        t1, b1, l1, r1 = self.__moveable_v_h(from_p)
+        t2, b2, l2, r2 = self.__moveable_v_h(to_p)
+        for r in range(*self.__intersection_of_range([t1, b1], [t2, b2])):
+            for c in range(*sorted([from_p[1] + 1, to_p[1]])):
+                if self.board[r][c] != 0: break
+            else: return res
+        for c in range(*self.__intersection_of_range([l1, r1], [l2, r2])):
+            for r in range(*sorted([from_p[0] + 1, to_p[0]])):
+                if self.board[r][c] != 0: break
+            else: return res
         return None
     
     def __cell_point(self, cell_x: int, cell_y: int) -> List[int]:
@@ -128,8 +158,9 @@ class Game:
         if black_cnt == 0 or black_cnt == len(self.__id_points): return 0
         return hash
 
-    def cal_board(self):
+    def refresh(self):
         """ 计算出当前棋盘局面. """
+        self.win.get_screenshot()
         board, dic = [], {}
         board.append([0] * (self.CELL_MAX_COL + 2))
         for i in range(self.CELL_MAX_ROW):
@@ -156,15 +187,41 @@ class Game:
                     vis[h] = vis_cnt
         self.type_cnt = len(vis)
         self.board = board
+    
+    def hint(self):
+        """ 提示一次. """
+        card_pos: Dict[int, List[List[int]]] = {}
+        for r in range(len(self.board)):
+            for c in range(len(self.board[0])):
+                cid = self.board[r][c]
+                if cid == 0: continue
+                card_pos.setdefault(cid, []).append([r, c])
+        assert self.type_cnt == len(card_pos)
+        for points in card_pos.values():
+            size = len(points)
+            for i in range(size):
+                for j in range(i + 1, size):
+                    if self.__path(points[i], points[j]) is not None:
+                        self.print(hint=[points[i], points[j]])
+                        return
+        print('Hint not found.')
 
-    def print_board(self):
+
+    def print(self, hint: Optional[List[List[int]]] = None):
         """ 打印棋盘. """
+        to_print = self.board
+        if hint is not None:
+            to_print = copy.deepcopy(self.board)
+            for px, py in hint: to_print[px][py] = '*'
+
         print('牌面类型数量:', self.type_cnt)
         header_footer = '+' + ('-' * (3 * self.CELL_MAX_COL + 6 + 1)) + '+'
         print(header_footer)
-        for line in self.board:
+        for line in to_print:
             print(end='|')
-            for n in line: print(('%3d' % n) if n > 0 else '   ', end='')
+            for n in line:
+                if type(n) == int: print(('%3d' % n) if n > 0 else '   ', end='')
+                else: print('  %s' % n, end='')
             print(' |')
         print(header_footer)
 
@@ -172,6 +229,10 @@ class Game:
 def main():
     win = Window()
     game = Game(win)
+    while True:
+        time.sleep(5)
+        game.refresh()
+        game.hint()
     # win.mouse_teleport(game.CELL_TOP + 41, game.CELL_LEFT + 12 + game.CELL_WIDTH)
 
 
