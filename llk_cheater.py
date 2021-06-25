@@ -4,7 +4,7 @@
 """
 
 import time
-from typing import Any, List
+from typing import Any, List, Optional
 import win32api, win32con, win32gui, win32ui, pywintypes
 
 
@@ -84,52 +84,71 @@ class Game:
     CELL_TOP, CELL_LEFT = 141, 64
     CELL_HEIGHT, CELL_WIDTH = 50, 40
     CELL_MAX_ROW, CELL_MAX_COL = 9, 16
-
-    # 随便找 8 个点, 要求这 8 个点的灰度值在任意卡牌上都相同
-    _ID_POINTS = [[16, 22], [17, 24], [18, 23], [20, 14], [21, 18], [26, 20], [29, 23], [33, 19]]
+    
+    @staticmethod
+    def __gray_of_rgba(rgba: List[int]) -> int:
+        """ 快速计算 RGBA 的灰度. """
+        r, g, b, a = rgba
+        return (r * 38 + g * 75 + b * 15) >> 7
 
     def __init__(self, win: Window) -> None:
+        self.__id_points = self.__init_id_points()
         self.win = win
         self.cal_board()
         self.print_board()
     
-    def cell_point(self, cell_x: int, cell_y: int) -> List[int]:
+    def __init_id_points(self):
+        """ 初始化定位格子 ID 的像素点. """
+        res = []
+        for dx in range(11, self.CELL_HEIGHT - 10, 4):
+            for dy in range(6, self.CELL_WIDTH - 5, 4):
+                res.append([dx, dy])
+        return res
+    
+    def __path(self, from_p: List[int], to_p: List[int]) -> Optional[List[List[int]]]:
+        """ 计算两点之间是否有可行路径. """
+        res = []
+        return None
+    
+    def __cell_point(self, cell_x: int, cell_y: int) -> List[int]:
         """ 格子的左上坐标点. 用 List 而不用 Tuple 返回是为了允许直接修改元素 (Tuple 内部元素不可变). """
         return [self.CELL_TOP + self.CELL_HEIGHT * cell_x, self.CELL_LEFT + self.CELL_WIDTH * cell_y]
     
-    def cell_id(self, cell_x: int, cell_y: int) -> int:
+    def __cell_id(self, cell_x: int, cell_y: int) -> int:
         """ 格子识别码 (根据几个像素确定). """
         hash = 0
-        px, py = self.cell_point(cell_x, cell_y)
         black_cnt = 0
-        for dx, dy in self._ID_POINTS:
+        px, py = self.__cell_point(cell_x, cell_y)
+        for dx, dy in self.__id_points:
             rgba = self.win.screen[px + dx][py + dy]
-            r, g, b, a = rgba
-            if r < 5 and g < 5 and b < 5: black_cnt += 1
-            gray = self.gray_of_rgba(rgba)
-            hash = (hash << 8) | gray
-        # if black_cnt > 7: return 0
+            gray = self.__gray_of_rgba(rgba)
+            is_black = gray < 50
+            if is_black: black_cnt += 1
+            hash = (hash << 1) | is_black
+        if black_cnt == 0 or black_cnt == len(self.__id_points): return 0
         return hash
 
     def cal_board(self):
         """ 计算出当前棋盘局面. """
         board, dic = [], {}
+        board.append([0] * (self.CELL_MAX_COL + 2))
         for i in range(self.CELL_MAX_ROW):
-            line = []
+            line = [0]
             board.append(line)
             for j in range(self.CELL_MAX_COL):
-                cid = self.cell_id(i, j)
+                cid = self.__cell_id(i, j)
                 line.append(cid)
                 dic[cid] = dic.get(cid, 0) + 1
+            line.append(0)
+        board.append([0] * (self.CELL_MAX_COL + 2))
         vis = {}
         vis_cnt = 0
         for i, line in enumerate(board):
             for j in range(len(line)):
                 h = line[j]
                 if h == 0: continue
-                if dic[h] != 4:
-                    print('[%d, %d]' % (i, j), dic[h])
-                if dic[h] & 1 == 1: line[j] = 0
+                # if dic[h] != 4: print('[%d, %d]' % (i, j), dic[h])
+                if dic[h] & 1 == 1 or dic[h] > 4: line[j] = 0
                 elif h in vis: line[j] = vis[h]
                 else:
                     vis_cnt += 1
@@ -141,7 +160,7 @@ class Game:
     def print_board(self):
         """ 打印棋盘. """
         print('牌面类型数量:', self.type_cnt)
-        header_footer = '+' + ('-' * (3 * self.CELL_MAX_COL + 1)) + '+'
+        header_footer = '+' + ('-' * (3 * self.CELL_MAX_COL + 6 + 1)) + '+'
         print(header_footer)
         for line in self.board:
             print(end='|')
@@ -149,35 +168,10 @@ class Game:
             print(' |')
         print(header_footer)
 
-    def same_rgb_points(self, ps):
-        """ 主要针对青蛙: 参数传入四只青蛙的坐标, 计算四只青蛙的颜色大体相同的地方. """
-        def rgba_of(cx, cy, px, py):
-            x, y = self.cell_point(cx, cy)
-            return self.win.screen[x + px][y + py]
-        def gray_of(cx, cy, px, py):
-            rgba = rgba_of(cx, cy, px, py)
-            return self.gray_of_rgba(rgba)
-        shift = 0
-        for i in range(9, 41):
-            for j in range(1, self.CELL_WIDTH):
-                co = gray_of(ps[0][0], ps[0][1], i, j)
-                for px, py in ps[1:]:
-                    if (co >> shift) != (gray_of(px, py, i, j) >> shift): break
-                else: print('[%d, %d]' % (i, j), end=' ')
-            print()
-    
-    @staticmethod
-    def gray_of_rgba(rgba: List[str]):
-        """ 快速计算 RGBA 的灰度. """
-        r, g, b, a = rgba
-        return (r * 38 + g * 75 + b * 15) >> 7
-
 
 def main():
     win = Window()
     game = Game(win)
-    # game.same_rgb_points([[5, 15], [7, 12], [7, 15], [8, 10]])
-    # game.same_rgb_points([[3, 5], [4, 1], [7, 14], [8, 15]])
     # win.mouse_teleport(game.CELL_TOP + 41, game.CELL_LEFT + 12 + game.CELL_WIDTH)
 
 
