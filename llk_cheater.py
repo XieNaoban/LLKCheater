@@ -118,7 +118,7 @@ class Game:
         self.__id_points = self.__init_id_points()
         self.win = win
         self.refresh()
-        self.print()
+        # self.print()
 
     def __moveable_v_h(self, p: List[int]) -> List[int]:
         """ 点在垂直和水平方向的可移动范围. """
@@ -257,7 +257,12 @@ class Game:
         print(header_footer)
 
 
-def main():
+def main_hint_once():
+    game = Game(Window())
+    game.print(game.hint())
+
+
+def main_connect_one_level():
     win = Window()
     game = Game(win)
     print('晃晃鼠标即可退出程序.')
@@ -270,7 +275,7 @@ def main():
 
 
 if __name__ == '__main__':
-    try: main()
+    try: main_connect_one_level()
     except pywintypes.error as e:
         if e.args[2] == '无效的窗口句柄。': print('错误: 未检测到正在运行的 "连连看V3.0".')
         else: raise e
